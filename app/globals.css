@@ -1,0 +1,9 @@
+@import './styles/madcamp.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.card { @apply rounded-2xl bg-slate-900/80 border border-slate-700 shadow p-4; }
+.input { @apply w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-white; }
+.btn { @apply rounded-xl px-4 py-2 font-semibold bg-indigo-500 hover:bg-indigo-400 text-white; }
+.btn-secondary { @apply rounded-xl px-4 py-2 font-semibold bg-slate-700 hover:bg-slate-600 text-white; }
