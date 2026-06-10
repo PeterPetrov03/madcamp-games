@@ -34,7 +34,15 @@ export default function PublicHomePage() {
   const [loading, setLoading] = useState(true)
 
   const topPlayers = useMemo(() => players.slice(0, 8), [players])
+  const finalists = useMemo(() => players.slice(0, 4), [players])
+  const nextChallenger = players[4]
+  const fourthPlace = players[3]
   const totalRounds = rounds.length
+
+  const cutLineDifference =
+    fourthPlace && nextChallenger
+      ? Math.max((fourthPlace.total_points || 0) - (nextChallenger.total_points || 0), 0)
+      : null
 
   async function loadPublicData() {
     setLoading(true)
@@ -72,92 +80,125 @@ export default function PublicHomePage() {
   }, [])
 
   return (
-    <main className="min-h-screen py-6 md:py-10">
-      <div className="mad-shell space-y-6">
-        <header className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+    <main className="min-h-screen p-4 max-w-7xl mx-auto space-y-6">
+      <header className="py-6 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+        <div>
+          <p className="text-sm text-indigo-300 uppercase tracking-[0.25em]">MAD CAMP Games</p>
+          <h1 className="text-4xl font-black">Лагерен турнир</h1>
+          <p className="text-slate-400 max-w-2xl">
+            Публична класация в реално време. Тук няма PIN кодове, лични бележки или история защо някой е получил точки.
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <Link href="/profile" className="btn-secondary">Моят профил</Link>
+          <Link href="/login" className="btn-secondary">Admin</Link>
+        </div>
+      </header>
+
+      <section className="grid md:grid-cols-4 gap-4">
+        <div className="card">
+          <p className="text-slate-400">Участници</p>
+          <b className="text-3xl">{players.length}</b>
+        </div>
+
+        <div className="card">
+          <p className="text-slate-400">Игри</p>
+          <b className="text-3xl">{games.length}</b>
+        </div>
+
+        <div className="card">
+          <p className="text-slate-400">Рундове</p>
+          <b className="text-3xl">{totalRounds}</b>
+        </div>
+
+        <div className="card">
+          <p className="text-slate-400">Лидер</p>
+          <b className="text-3xl">{topPlayers[0]?.name || '—'}</b>
+        </div>
+      </section>
+
+      <section className="card space-y-4 border-yellow-500/40">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="mad-kicker">MAD CAMP Games</p>
-            <h1 className="text-4xl md:text-6xl font-black tracking-tight mt-2">Лагерен турнир</h1>
-            <p className="mad-muted mt-3 max-w-2xl">
-              Публична класация в реално време. Тук няма PIN кодове, лични бележки или история защо някой е получил точки.
+            <p className="text-sm text-yellow-300 uppercase tracking-[0.25em]">Final Zone</p>
+            <h2 className="text-2xl font-black">Топ 4 финалисти към момента</h2>
+          </div>
+          {loading && <span className="text-sm text-slate-400">Обновяване...</span>}
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-3">
+          {finalists.map((player, index) => (
+            <div key={player.id} className="rounded-2xl bg-slate-800/80 border border-slate-700 p-4">
+              <p className="text-sm text-slate-400">{index + 1}. място</p>
+              <h3 className="text-xl font-black">{player.name}</h3>
+              <p className="text-yellow-300 font-bold">{player.total_points || 0} точки</p>
+            </div>
+          ))}
+
+          {!finalists.length && (
+            <p className="text-slate-400">Все още няма достатъчно точки за финалисти.</p>
+          )}
+        </div>
+
+        {nextChallenger && fourthPlace && cutLineDifference !== null && (
+          <div className="rounded-2xl bg-slate-950/70 border border-slate-700 p-4">
+            <p className="text-slate-300">
+              <b>{nextChallenger.name}</b> е първи извън финала и е само на{' '}
+              <b className="text-yellow-300">{cutLineDifference}</b> точки от Топ 4.
             </p>
           </div>
+        )}
+      </section>
 
-          <nav className="flex gap-3">
-            <Link href="/profile" className="mad-btn-secondary">Моят профил</Link>
-            <Link href="/login" className="mad-btn">Admin</Link>
-          </nav>
-        </header>
+      <section className="grid lg:grid-cols-[1.2fr_0.8fr] gap-6">
+        <div className="card space-y-4">
+          <h2 className="text-xl font-black">Класация</h2>
 
-        <section className="grid md:grid-cols-4 gap-4">
-          <div className="mad-card p-5">
-            <p className="mad-muted">Участници</p>
-            <b className="text-4xl">{players.length}</b>
-          </div>
-          <div className="mad-card p-5">
-            <p className="mad-muted">Игри</p>
-            <b className="text-4xl">{games.length}</b>
-          </div>
-          <div className="mad-card p-5">
-            <p className="mad-muted">Рундове</p>
-            <b className="text-4xl">{totalRounds}</b>
-          </div>
-          <div className="mad-card p-5">
-            <p className="mad-muted">Лидер</p>
-            <b className="text-2xl">{topPlayers[0]?.name || '—'}</b>
-          </div>
-        </section>
+          <div className="space-y-2">
+            {topPlayers.map((player, index) => {
+              const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : ''
 
-        <section className="grid lg:grid-cols-[1.25fr_0.75fr] gap-6">
-          <div className="mad-card p-5 md:p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black">Класация</h2>
-              {loading && <span className="text-sm mad-muted">Обновяване...</span>}
-            </div>
-
-            <div className="space-y-3">
-              {topPlayers.map((player, index) => {
-                const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : ''
-
-                return (
-                  <div key={player.id} className="mad-card-solid p-4 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`mad-rank-badge ${rankClass}`}>{index + 1}</div>
-                      <div>
-                        <p className="font-black text-lg">{player.name}</p>
-                        <p className="text-sm mad-muted">Общо точки</p>
-                      </div>
+              return (
+                <div key={player.id} className="flex items-center justify-between rounded-xl bg-slate-800/70 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`rank ${rankClass}`}>{index + 1}</div>
+                    <div>
+                      <p className="font-bold">{player.name}</p>
+                      <p className="text-sm text-slate-400">Общо точки</p>
                     </div>
-                    <b className="text-3xl">{player.total_points || 0}</b>
                   </div>
-                )
-              })}
 
-              {!players.length && (
-                <div className="mad-card-solid p-5 text-center mad-muted">
-                  Все още няма участници или точки.
+                  <b className="text-2xl">{player.total_points || 0}</b>
                 </div>
-              )}
-            </div>
-          </div>
+              )
+            })}
 
-          <div className="mad-card p-5 md:p-6 space-y-4">
-            <h2 className="text-2xl font-black">Игри</h2>
-            <div className="space-y-3">
-              {games.map(game => {
-                const gameRounds = rounds.filter(round => round.game_id === game.id)
-                return (
-                  <div key={game.id} className="mad-card-solid p-4">
-                    <p className="font-black">{game.title}</p>
-                    <p className="text-sm mad-muted">{gameRounds.length} рунда</p>
-                  </div>
-                )
-              })}
-              {!games.length && <p className="mad-muted">Все още няма добавени игри.</p>}
-            </div>
+            {!players.length && (
+              <p className="text-slate-400">Все още няма участници или точки.</p>
+            )}
           </div>
-        </section>
-      </div>
+        </div>
+
+        <div className="card space-y-4">
+          <h2 className="text-xl font-black">Игри</h2>
+
+          <div className="space-y-2">
+            {games.map(game => {
+              const gameRounds = rounds.filter(round => round.game_id === game.id)
+
+              return (
+                <div key={game.id} className="rounded-xl bg-slate-800/70 p-3">
+                  <p className="font-bold">{game.title}</p>
+                  <p className="text-sm text-slate-400">{gameRounds.length} рунда</p>
+                </div>
+              )
+            })}
+
+            {!games.length && <p className="text-slate-400">Все още няма добавени игри.</p>}
+          </div>
+        </div>
+      </section>
     </main>
   )
 }
