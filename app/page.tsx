@@ -8,17 +8,11 @@ type PublicPlayer = {
   id: string
   name: string
   total_points: number
-  game_points: number
-  achievement_points: number
-  steps_points: number
-  heart_rate_points: number
-  bonus_points: number
 }
 
 type Game = {
   id: string
   title: string
-  created_at: string
 }
 
 type Round = {
@@ -27,10 +21,36 @@ type Round = {
   round_number: number
 }
 
+type FeedEvent = {
+  id: string
+  type: 'game' | 'achievement' | 'steps' | 'heart_rate' | 'bonus' | 'penalty'
+  title: string
+  points: number
+  round_number: number | null
+  created_at: string
+  players?: { name: string } | null
+  games?: { title: string } | null
+}
+
+function feedLabel(event: FeedEvent) {
+  if (event.type === 'game') {
+    return `${event.games?.title || 'Игра'}${event.round_number ? ` · Рунд ${event.round_number}` : ''}`
+  }
+
+  if (event.type === 'achievement') return `Achievement · ${event.title}`
+  if (event.type === 'steps') return `Крачки · ${event.title}`
+  if (event.type === 'heart_rate') return `Пулс · ${event.title}`
+  if (event.type === 'bonus') return `Бонус · ${event.title}`
+  if (event.type === 'penalty') return `Промяна в точки`
+
+  return event.title
+}
+
 export default function PublicHomePage() {
   const [players, setPlayers] = useState<PublicPlayer[]>([])
   const [games, setGames] = useState<Game[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
+  const [feed, setFeed] = useState<FeedEvent[]>([])
   const [loading, setLoading] = useState(true)
 
   const topPlayers = useMemo(() => players.slice(0, 8), [players])
@@ -47,18 +67,34 @@ export default function PublicHomePage() {
   async function loadPublicData() {
     setLoading(true)
 
-    const [leaderboardRes, gamesRes, roundsRes] = await Promise.all([
+    const [leaderboardRes, gamesRes, roundsRes, feedRes] = await Promise.all([
       supabase
         .from('leaderboard')
-        .select('id,name,total_points,game_points,achievement_points,steps_points,heart_rate_points,bonus_points')
+        .select('id,name,total_points')
         .order('total_points', { ascending: false }),
-      supabase.from('games').select('id,title,created_at').order('created_at', { ascending: true }),
-      supabase.from('game_rounds').select('id,game_id,round_number').order('round_number', { ascending: true }),
+
+      supabase
+        .from('games')
+        .select('id,title')
+        .order('created_at', { ascending: true }),
+
+      supabase
+        .from('game_rounds')
+        .select('id,game_id,round_number')
+        .order('round_number', { ascending: true }),
+
+      supabase
+        .from('point_events')
+        .select('id,type,title,points,round_number,created_at,players(name),games(title)')
+        .neq('type', 'penalty')
+        .order('created_at', { ascending: false })
+        .limit(15),
     ])
 
     if (!leaderboardRes.error) setPlayers((leaderboardRes.data || []) as PublicPlayer[])
     if (!gamesRes.error) setGames((gamesRes.data || []) as Game[])
     if (!roundsRes.error) setRounds((roundsRes.data || []) as Round[])
+    if (!feedRes.error) setFeed((feedRes.data || []) as FeedEvent[])
 
     setLoading(false)
   }
@@ -86,7 +122,7 @@ export default function PublicHomePage() {
           <p className="text-sm text-indigo-300 uppercase tracking-[0.25em]">MAD CAMP Games</p>
           <h1 className="text-4xl font-black">Лагерен турнир</h1>
           <p className="text-slate-400 max-w-2xl">
-            Публична класация в реално време. Тук няма PIN кодове, лични бележки или история защо някой е получил точки.
+            Публична класация в реално време. Тук няма PIN кодове, лични бележки или лична история на участниците.
           </p>
         </div>
 
@@ -181,22 +217,48 @@ export default function PublicHomePage() {
         </div>
 
         <div className="card space-y-4">
-          <h2 className="text-xl font-black">Игри</h2>
+          <h2 className="text-xl font-black">Последни 15 събития</h2>
 
           <div className="space-y-2">
-            {games.map(game => {
-              const gameRounds = rounds.filter(round => round.game_id === game.id)
+            {feed.map(event => (
+              <div key={event.id} className="rounded-xl bg-slate-800/70 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold">{event.players?.name || 'Участник'}</p>
+                    <p className="text-sm text-slate-400">{feedLabel(event)}</p>
+                  </div>
 
-              return (
-                <div key={game.id} className="rounded-xl bg-slate-800/70 p-3">
-                  <p className="font-bold">{game.title}</p>
-                  <p className="text-sm text-slate-400">{gameRounds.length} рунда</p>
+                  <b className={event.points >= 0 ? 'text-green-300' : 'text-red-300'}>
+                    {event.points > 0 ? '+' : ''}
+                    {event.points}
+                  </b>
                 </div>
-              )
-            })}
+              </div>
+            ))}
 
-            {!games.length && <p className="text-slate-400">Все още няма добавени игри.</p>}
+            {!feed.length && (
+              <p className="text-slate-400">Все още няма събития.</p>
+            )}
           </div>
+        </div>
+      </section>
+
+      <section className="card space-y-4">
+        <h2 className="text-xl font-black">Игри</h2>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {games.map(game => {
+            const gameRounds = rounds.filter(round => round.game_id === game.id)
+
+            return (
+              <div key={game.id} className="rounded-xl bg-slate-800/70 p-3">
+                <p className="font-bold">{game.title}</p>
+                <p className="text-sm text-slate-400">{gameRounds.length} рунда</p>
+              </div>
+            )
+          })}
+
+          {!games.length && <p className="text-slate-400">Все още няма добавени игри.</p>}
         </div>
       </section>
     </main>
