@@ -1,138 +1,107 @@
-# MAD CAMP Games Tournament App
+# MadCamp Games
 
-Уеб приложение за лагерен турнир с публична класация, админ панел, профили на участници и Supabase база данни.
+Tournament management system for MadCamp.
 
-## Какво има в тази версия
+## Features
 
-- `/` — публична начална страница с класация, игри и брой рундове.
-- `/profile` — участникът въвежда личния си PIN и вижда собствената си история на точки.
-- `/login` — админ вход.
-- `/admin` — защитен админ панел.
-- Участниците имат само: **име** и **PIN код**.
-- Игрите имат рундове.
-- Всеки рунд има отделни точки за 1во до 8мо място.
-- При запис на резултат можеш да въвеждаш участник по **име или PIN**.
-- Визуалните стилове са изнесени в отделна папка: `app/styles/madcamp.css`.
+* Admin panel
+* Player profiles
+* PIN login system
+* Leaderboard
+* Games and rounds
+* Manual points
+* Round-based scoring
+* Supabase integration
+* Public homepage
+* Middleware protection for admin routes
 
 ---
 
-## 1. Какво ти трябва
+# Prerequisites
 
-Трябват ти:
+Install the following:
 
-1. Node.js LTS или нова версия.
-2. Supabase проект.
-3. Този проект, разархивиран на лаптопа ти.
+* Node.js 24+
+* Git
+* VS Code (recommended)
+* Supabase account
 
-Провери Node и npm:
+Verify installation:
 
 ```bash
 node -v
 npm -v
+git --version
 ```
 
 ---
 
-## 2. Важно за npm registry
-
-Ако npm се опитва да сваля пакети от грешен адрес, пусни:
+# Clone Repository
 
 ```bash
-npm.cmd config set registry https://registry.npmjs.org/
-npm.cmd config get registry
-```
+git clone https://github.com/PeterPetrov03/madcamp-games.git
 
-Трябва да върне:
-
-```text
-https://registry.npmjs.org/
+cd madcamp-games
 ```
 
 ---
 
-## 3. Инсталиране на пакетите
-
-Влез в папката на проекта и пусни:
+# Install Dependencies
 
 ```bash
-npm.cmd install --legacy-peer-deps
-```
-
-Ако имаш стари счупени инсталации, изтрий:
-
-```text
-node_modules
-package-lock.json
-```
-
-после пак пусни:
-
-```bash
-npm.cmd install --legacy-peer-deps
+npm install
 ```
 
 ---
 
-## 4. Supabase настройка
+# Supabase Setup
 
-В проекта има файл:
+Create a new Supabase project.
+
+Inside Supabase:
 
 ```text
-.env.local
+SQL Editor
 ```
 
-Вътре трябва да има:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://твоя-проект.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=твоят-publishable-key
-```
-
-Не слагай `/rest/v1` в URL-а.
-
-Правилно:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://npffhrpakihisrwfgbpy.supabase.co
-```
-
-Грешно:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://npffhrpakihisrwfgbpy.supabase.co/rest/v1
-```
-
----
-
-## 5. Създаване на таблиците
-
-1. Влез в Supabase.
-2. Отвори проекта.
-3. Отвори **SQL Editor**.
-4. Натисни **New query**.
-5. Отвори файла:
+Run:
 
 ```text
 supabase/schema.sql
 ```
 
-6. Копирай целия SQL код.
-7. Paste в SQL Editor.
-8. Натисни **Run**.
-
-Важно: този `schema.sql` reset-ва таблиците. Ако вече имаш реални данни, те ще бъдат изтрити.
+This creates all required tables and views.
 
 ---
 
-## 6. Стартиране локално
+# Environment Variables
 
-В папката на проекта пусни:
+Create:
+
+```text
+.env.local
+```
+
+Example:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+```
+
+Do NOT commit this file.
+
+---
+
+# Run Project
+
+Development:
 
 ```bash
-npm.cmd run dev
+npm run dev
 ```
 
-После отвори:
+Open:
 
 ```text
 http://localhost:3000
@@ -140,143 +109,167 @@ http://localhost:3000
 
 ---
 
-## 7. Страници
-
-### Публична страница
+# Project Structure
 
 ```text
-http://localhost:3000
+app/
+ ├── page.tsx
+ ├── login/
+ ├── admin/
+ └── profile/
+
+lib/
+ ├── auth.ts
+ └── supabase.ts
+
+supabase/
+ └── schema.sql
+
+middleware.ts
 ```
 
-Тук се виждат:
+---
 
-- класация;
-- брой участници;
-- брой игри;
-- брой рундове;
-- списък с игри.
+# Routes
 
-Тук **не се показват PIN кодове** и **не се показва история защо някой е получил точки**.
-
-### Профил на участник
+## Public Homepage
 
 ```text
-http://localhost:3000/profile
+/
 ```
 
-Участникът въвежда своя PIN и вижда:
+Visible to everyone.
 
-- общи точки;
-- точки по категории;
-- лична история на точките.
+Contains:
 
-### Admin login
+* Leaderboard
+* Games overview
+* Public information
+
+No sensitive information is shown.
+
+---
+
+## Login
 
 ```text
-http://localhost:3000/login
+/login
 ```
 
-Login:
+Admin login page.
+
+---
+
+## Admin
+
+```text
+/admin
+```
+
+Protected route.
+
+Allows:
+
+* Create players
+* Create games
+* Create rounds
+* Award points
+* Manage leaderboard
+
+---
+
+## Profile
+
+```text
+/profile
+```
+
+Player area.
+
+Players can:
+
+* View own points
+* View own PIN
+* View point history
+* Upload profile picture
+
+---
+
+# Default Admin Credentials
+
+Development only.
+
+Username:
 
 ```text
 Pesho
+```
+
+Password:
+
+```text
 MADCAMP
 ```
 
-### Admin panel
+---
+
+# Git Ignore
+
+The following files should never be committed:
 
 ```text
-http://localhost:3000/admin
+node_modules/
+.next/
+.env
+.env.local
 ```
 
-Там можеш да:
+---
 
-- добавяш участници;
-- редактираш имена и PIN кодове;
-- триеш участници;
-- добавяш игри;
-- добавяш/редактираш/триеш рундове;
-- задаваш различни точки за всеки рунд;
-- записваш резултат от рунд по име или PIN;
-- добавяш ръчни точки;
-- триеш записи с точки.
+# Roadmap
+
+Planned features:
+
+* Secret achievements
+* Public live activity feed
+* Top 4 finalists section
+* Daily rankings
+* Attendance tracking
+* Heart-rate challenges
+* Camp projector mode
+* Achievement badges
+* Team competitions
+* Notifications
 
 ---
 
-## 8. Как работят игрите и рундовете
+# Deployment
 
-Играта пази само името си.
+Recommended platforms:
 
-Рундовете пазят:
+* Vercel
+* Netlify
 
-- към коя игра са;
-- номер на рунда;
-- точки за 1во място;
-- точки за 2ро място;
-- ...
-- точки за 8мо място.
+Database:
 
-Така можеш да имаш например:
-
-| Игра | Рунд | 1во | 2ро | 3то |
-|---|---:|---:|---:|---:|
-| Black Market | 1 | 100 | 80 | 60 |
-| Black Market | 2 | 150 | 120 | 90 |
-| Black Market | 3 | 50 | 40 | 30 |
+* Supabase
 
 ---
 
-## 9. Въвеждане на резултат
+# Technology Stack
 
-В админ панела:
-
-1. Избираш игра.
-2. Избираш рунд.
-3. Въвеждаш участниците по места.
-
-Полетата са:
-
-```text
-1во място
-2ро място
-3то място
-...
-8мо място
-```
-
-Във всяко поле можеш да въведеш:
-
-- името на участника;
-- или PIN кода му.
-
-Ако има двама участници с еднакво име, използвай PIN код.
+* Next.js
+* React
+* TypeScript
+* Tailwind CSS
+* Supabase
+* GitHub
 
 ---
 
-## 10. Важно за сигурността
+# Contributing
 
-Тази версия е MVP за тестване. Публичната страница не показва чувствителна информация, но Supabase правилата в момента са отворени, за да може админ панелът да работи лесно от frontend-а.
-
-Преди реален лагер с истински участници е добре да направим по-сигурна версия с:
-
-- Supabase Auth;
-- роли: admin/player;
-- по-строги RLS policies;
-- server-side actions за админ операции.
-
-
----
-
-## Update: Participant profile page
-
-This version adds a participant profile page at `/profile`:
-
-- participants log in with their PIN;
-- they can see their own PIN;
-- they can see all participants without seeing other people's PINs;
-- they can see their own points and point history;
-- game points show game + round;
-- manual/admin bonus points show the title set by the admin;
-- participants can upload a profile photo from their phone.
-
-Important: run `supabase/schema.sql` again in Supabase SQL Editor, because the `players` table now has `avatar_url` and the app creates an `avatars` Supabase Storage bucket.
+1. Create branch
+2. Commit changes
+3. Push branch
+4. Create Pull Request
