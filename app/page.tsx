@@ -183,8 +183,7 @@ export default function PublicHomePage() {
             <p className="mad-kicker">MAD CAMP Games</p>
             <h1 className="text-4xl font-black">Лагерен турнир</h1>
             <p className="mad-muted max-w-2xl">
-              Публична класация в реално време. Тук няма PIN кодове, лични
-              бележки или лична история на участниците.
+              Публична класация в реално време. Следете представянето си и се състезавайте за челните места!
             </p>
           </div>
 
