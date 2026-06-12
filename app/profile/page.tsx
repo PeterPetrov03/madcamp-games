@@ -32,7 +32,7 @@ type PointEvent = {
   note: string | null;
   round_number: number | null;
   created_at: string;
-  games?: { title: string } | null;
+  games?: { title: string } | { title: string }[] | null;
 };
 
 function initials(name: string) {
@@ -48,7 +48,9 @@ function initials(name: string) {
 
 function eventLabel(event: PointEvent) {
   if (event.type === "game") {
-    const gameTitle = event.games?.title || "Игра";
+    const gameTitle = Array.isArray(event.games)
+      ? event.games[0]?.title
+      : event.games?.title || "Игра";
     const round = event.round_number ? ` · Рунд ${event.round_number}` : "";
     return `${gameTitle}${round}`;
   }
@@ -156,7 +158,9 @@ export default function PlayerProfilePage() {
       .eq("player_id", profileRes.data.id)
       .order("created_at", { ascending: false });
 
-    if (!eventsRes.error) setEvents((eventsRes.data || []) as PointEvent[]);
+    if (!eventsRes.error) {
+      setEvents((eventsRes.data || []) as unknown as PointEvent[]);
+    }
 
     setLoading(false);
   }
