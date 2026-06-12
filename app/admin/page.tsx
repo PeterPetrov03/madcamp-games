@@ -607,7 +607,7 @@ export default function AdminPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3">
             <select className="mad-select" value={pointForm.player_id} onChange={e => setPointForm({ ...pointForm, player_id: e.target.value })}>
               <option value="">Избери участник</option>
-              {players.map(player => <option key={player.id} value={player.id}>{player.name} — {player.pin}</option>)}
+              {players.map(player => <option key={player.id} value={player.id}>{player.name}</option>)}
             </select>
 
             <select className="mad-select" value={pointForm.type} onChange={e => setPointForm({ ...pointForm, type: e.target.value })}>
@@ -632,7 +632,6 @@ export default function AdminPage() {
                   <p className="font-bold">{event.title}</p>
                   <p className="text-sm mad-muted">
                     {event.players?.name || 'Изтрит участник'}
-                    {event.players?.pin ? ` · PIN ${event.players.pin}` : ''}
                     {event.games?.title ? ` · ${event.games.title}` : ''}
                     {event.round_number ? ` · Рунд ${event.round_number}` : ''}
                   </p>
