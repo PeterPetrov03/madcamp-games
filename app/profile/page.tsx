@@ -32,7 +32,14 @@ type PointEvent = {
   note: string | null
   round_number: number | null
   created_at: string
-  games?: { title: string } | null
+  games?: { title: string } | { title: string }[] | null
+}
+
+type GameSummary = {
+  title: string
+  totalPoints: number
+  rounds: number
+  averagePerRound: number
 }
 
 function initials(name: string) {
@@ -44,14 +51,27 @@ function initials(name: string) {
     .join('') || '?'
 }
 
+function getGameTitle(event: PointEvent) {
+  if (Array.isArray(event.games)) {
+    return event.games[0]?.title || 'Игра'
+  }
+
+  return event.games?.title || 'Игра'
+}
+
 function eventLabel(event: PointEvent) {
   if (event.type === 'game') {
-    const gameTitle = event.games?.title || 'Игра'
+    const gameTitle = getGameTitle(event)
     const round = event.round_number ? ` · Рунд ${event.round_number}` : ''
     return `${gameTitle}${round}`
   }
 
   return event.title
+}
+
+function formatAverage(value: number) {
+  if (!Number.isFinite(value)) return '0'
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
 export default function PlayerProfilePage() {
@@ -68,6 +88,48 @@ export default function PlayerProfilePage() {
     () => [...participants].sort((a, b) => (b.total_points || 0) - (a.total_points || 0)),
     [participants]
   )
+
+  const gameEvents = useMemo(
+    () => events.filter(event => event.type === 'game'),
+    [events]
+  )
+
+  const gameSummaries = useMemo(() => {
+    const summaries = new Map<string, GameSummary>()
+
+    gameEvents.forEach(event => {
+      const title = getGameTitle(event)
+      const current = summaries.get(title) || {
+        title,
+        totalPoints: 0,
+        rounds: 0,
+        averagePerRound: 0,
+      }
+
+      current.totalPoints += event.points
+      current.rounds += 1
+      current.averagePerRound = current.rounds ? current.totalPoints / current.rounds : 0
+
+      summaries.set(title, current)
+    })
+
+    return Array.from(summaries.values()).sort((a, b) => b.totalPoints - a.totalPoints)
+  }, [gameEvents])
+
+  const playerRank = useMemo(() => {
+    if (!player) return null
+    const index = sortedParticipants.findIndex(participant => participant.id === player.id)
+    return index >= 0 ? index + 1 : null
+  }, [player, sortedParticipants])
+
+  const roundsPlayed = gameEvents.length
+  const gamesPlayed = gameSummaries.length
+  const averagePointsPerGame = gamesPlayed ? player!.game_points / gamesPlayed : 0
+  const averagePointsPerRound = roundsPlayed ? player!.game_points / roundsPlayed : 0
+  const bestGame = gameSummaries[0]
+  const bestRound = gameEvents.length
+    ? [...gameEvents].sort((a, b) => b.points - a.points)[0]
+    : null
 
   async function loadParticipants() {
     const res = await supabase
@@ -212,77 +274,149 @@ export default function PlayerProfilePage() {
         )}
 
         {player && (
-          <section className="grid lg:grid-cols-[0.95fr_1.05fr] gap-6">
-            <div className="mad-card p-5 md:p-6 space-y-5">
-              <div className="flex items-center gap-4">
-                {player.avatar_url ? (
-                  <img src={player.avatar_url} alt={player.name} className="mad-avatar-xl" />
-                ) : (
-                  <div className="mad-avatar-xl mad-avatar-fallback">{initials(player.name)}</div>
-                )}
+          <>
+            <section className="grid lg:grid-cols-[0.95fr_1.05fr] gap-6">
+              <div className="mad-card p-5 md:p-6 space-y-5">
+                <div className="flex items-center gap-4">
+                  {player.avatar_url ? (
+                    <img src={player.avatar_url} alt={player.name} className="mad-avatar-xl" />
+                  ) : (
+                    <div className="mad-avatar-xl mad-avatar-fallback">{initials(player.name)}</div>
+                  )}
 
-                <div className="min-w-0">
-                  <p className="mad-muted">Участник</p>
-                  <h2 className="text-3xl font-black truncate">{player.name}</h2>
-                  <p className="mad-muted mt-1">Твоят PIN: <span className="text-white font-bold">{player.pin}</span></p>
-                </div>
-              </div>
-
-              <div className="mad-card-solid p-4 flex items-center justify-between">
-                <div>
-                  <p className="mad-muted">Общо точки</p>
-                  <p className="text-sm mad-muted">Всичко, което си събрал досега</p>
-                </div>
-                <b className="text-5xl">{player.total_points}</b>
-              </div>
-
-              <label className="mad-card-solid p-4 block cursor-pointer hover:bg-slate-800/80 transition">
-                <p className="font-bold">Качи профилна снимка</p>
-                <p className="text-sm mad-muted mt-1">Избери снимка от телефона си.</p>
-                <input
-                  className="hidden"
-                  type="file"
-                  accept="image/*"
-                  onChange={e => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadAvatar(file)
-                  }}
-                />
-              </label>
-
-              {uploading && <p className="mad-muted">Качване...</p>}
-              {status && <p className="text-indigo-200">{status}</p>}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Игри</p><b>{player.game_points}</b></div>
-                <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Achievements</p><b>{player.achievement_points}</b></div>
-                <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Крачки</p><b>{player.steps_points}</b></div>
-                <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Пулс</p><b>{player.heart_rate_points}</b></div>
-                <div className="mad-card-solid p-3 col-span-2"><p className="mad-muted text-sm">Бонус / наказание</p><b>{player.bonus_points}</b></div>
-              </div>
-            </div>
-
-            <div className="mad-card p-5 md:p-6 space-y-3">
-              <h2 className="text-2xl font-black">Мойте точки</h2>
-              <p className="mad-muted">Историята показва само твоите точки.</p>
-
-              {events.map(event => (
-                <div key={event.id} className="mad-card-solid p-4 flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-bold">{eventLabel(event)}</p>
-                    <p className="text-sm mad-muted">
-                      {event.type === 'game' ? 'Точки от игра' : 'Допълнителни точки'}
-                    </p>
+                  <div className="min-w-0">
+                    <p className="mad-muted">Участник</p>
+                    <h2 className="text-3xl font-black truncate">{player.name}</h2>
+                    <p className="mad-muted mt-1">Твоят PIN: <span className="text-white font-bold">{player.pin}</span></p>
                   </div>
-                  <b className={event.points >= 0 ? 'text-green-300 text-2xl' : 'text-red-300 text-2xl'}>
-                    {event.points > 0 ? '+' : ''}{event.points}
-                  </b>
                 </div>
-              ))}
 
-              {!events.length && <p className="mad-muted">Все още нямаш записани точки.</p>}
-            </div>
-          </section>
+                <div className="mad-card-solid p-4 flex items-center justify-between">
+                  <div>
+                    <p className="mad-muted">Общо точки</p>
+                    <p className="text-sm mad-muted">Всичко, което си събрал досега</p>
+                  </div>
+                  <b className="text-5xl">{player.total_points}</b>
+                </div>
+
+                <label className="mad-card-solid p-4 block cursor-pointer hover:bg-slate-800/80 transition">
+                  <p className="font-bold">Качи профилна снимка</p>
+                  <p className="text-sm mad-muted mt-1">Избери снимка от телефона си.</p>
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) uploadAvatar(file)
+                    }}
+                  />
+                </label>
+
+                {uploading && <p className="mad-muted">Качване...</p>}
+                {status && <p className="text-indigo-200">{status}</p>}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Игри</p><b>{player.game_points}</b></div>
+                  <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Achievements</p><b>{player.achievement_points}</b></div>
+                  <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Крачки</p><b>{player.steps_points}</b></div>
+                  <div className="mad-card-solid p-3"><p className="mad-muted text-sm">Пулс</p><b>{player.heart_rate_points}</b></div>
+                  <div className="mad-card-solid p-3 col-span-2"><p className="mad-muted text-sm">Бонус / наказание</p><b>{player.bonus_points}</b></div>
+                </div>
+              </div>
+
+              <div className="mad-card p-5 md:p-6 space-y-5">
+                <div>
+                  <h2 className="text-2xl font-black">Статистика</h2>
+                  <p className="mad-muted">Тук виждаш обобщение само на твоето представяне.</p>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Място в класацията</p>
+                    <b className="text-3xl">{playerRank ? `#${playerRank}` : '—'}</b>
+                  </div>
+
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Изиграни игри</p>
+                    <b className="text-3xl">{gamesPlayed}</b>
+                  </div>
+
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Изиграни рундове</p>
+                    <b className="text-3xl">{roundsPlayed}</b>
+                  </div>
+
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Средно точки на игра</p>
+                    <b className="text-3xl">{formatAverage(averagePointsPerGame)}</b>
+                  </div>
+
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Средно точки на рунд</p>
+                    <b className="text-3xl">{formatAverage(averagePointsPerRound)}</b>
+                  </div>
+
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Най-силен рунд</p>
+                    <b className="text-3xl">{bestRound ? `+${bestRound.points}` : '—'}</b>
+                    {bestRound && <p className="text-sm mad-muted mt-1">{eventLabel(bestRound)}</p>}
+                  </div>
+                </div>
+
+                {bestGame && (
+                  <div className="mad-card-solid p-4">
+                    <p className="mad-muted text-sm">Най-силна игра</p>
+                    <p className="font-black text-xl">{bestGame.title}</p>
+                    <p className="mad-muted mt-1">{bestGame.totalPoints} точки от {bestGame.rounds} рунда</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="grid lg:grid-cols-[0.95fr_1.05fr] gap-6">
+              <div className="mad-card p-5 md:p-6 space-y-3">
+                <h2 className="text-2xl font-black">Точки по игри</h2>
+                <p className="mad-muted">Обобщение на точките ти от всяка игра.</p>
+
+                {gameSummaries.map(game => (
+                  <div key={game.title} className="mad-card-solid p-4 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-bold">{game.title}</p>
+                      <p className="text-sm mad-muted">
+                        {game.rounds} {game.rounds === 1 ? 'рунд' : 'рунда'} · средно {formatAverage(game.averagePerRound)} точки на рунд
+                      </p>
+                    </div>
+                    <b className="text-green-300 text-2xl">+{game.totalPoints}</b>
+                  </div>
+                ))}
+
+                {!gameSummaries.length && <p className="mad-muted">Все още нямаш точки от игри.</p>}
+              </div>
+
+              <div className="mad-card p-5 md:p-6 space-y-3">
+                <h2 className="text-2xl font-black">Моите точки</h2>
+                <p className="mad-muted">Историята показва само твоите точки.</p>
+
+                {events.map(event => (
+                  <div key={event.id} className="mad-card-solid p-4 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-bold">{eventLabel(event)}</p>
+                      <p className="text-sm mad-muted">
+                        {event.type === 'game' ? 'Точки от игра' : 'Допълнителни точки'}
+                      </p>
+                      {event.note && <p className="text-sm mad-muted mt-1">{event.note}</p>}
+                    </div>
+                    <b className={event.points >= 0 ? 'text-green-300 text-2xl' : 'text-red-300 text-2xl'}>
+                      {event.points > 0 ? '+' : ''}{event.points}
+                    </b>
+                  </div>
+                ))}
+
+                {!events.length && <p className="mad-muted">Все още нямаш записани точки.</p>}
+              </div>
+            </section>
+          </>
         )}
 
         <section className="mad-card p-5 md:p-6 space-y-4">

@@ -8,6 +8,7 @@ type PublicPlayer = {
   id: string
   name: string
   total_points: number
+  game_points: number
 }
 
 type Game = {
@@ -32,6 +33,16 @@ type FeedEvent = {
   games?: { title: string } | null
 }
 
+type GamePointEvent = {
+  player_id: string
+  points: number
+}
+
+type PlayerGameStats = {
+  gameEventsCount: number
+  averageGamePoints: number
+}
+
 function feedLabel(event: FeedEvent) {
   if (event.type === 'game') {
     return `${event.games?.title || 'Игра'}${event.round_number ? ` · Рунд ${event.round_number}` : ''}`
@@ -51,6 +62,7 @@ export default function PublicHomePage() {
   const [games, setGames] = useState<Game[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
   const [feed, setFeed] = useState<FeedEvent[]>([])
+  const [playerGameStats, setPlayerGameStats] = useState<Record<string, PlayerGameStats>>({})
   const [loading, setLoading] = useState(true)
 
   const topPlayers = useMemo(() => players.slice(0, 8), [players])
@@ -67,10 +79,10 @@ export default function PublicHomePage() {
   async function loadPublicData() {
     setLoading(true)
 
-    const [leaderboardRes, gamesRes, roundsRes, feedRes] = await Promise.all([
+    const [leaderboardRes, gamesRes, roundsRes, feedRes, gamePointsRes] = await Promise.all([
       supabase
         .from('leaderboard')
-        .select('id,name,total_points')
+        .select('id,name,total_points,game_points')
         .order('total_points', { ascending: false }),
 
       supabase
@@ -89,12 +101,42 @@ export default function PublicHomePage() {
         .neq('type', 'penalty')
         .order('created_at', { ascending: false })
         .limit(15),
+
+      supabase
+        .from('point_events')
+        .select('player_id,points')
+        .eq('type', 'game'),
     ])
 
     if (!leaderboardRes.error) setPlayers((leaderboardRes.data || []) as PublicPlayer[])
     if (!gamesRes.error) setGames((gamesRes.data || []) as Game[])
     if (!roundsRes.error) setRounds((roundsRes.data || []) as Round[])
     if (!feedRes.error) setFeed((feedRes.data || []) as FeedEvent[])
+
+    if (!gamePointsRes.error) {
+      const nextStats: Record<string, PlayerGameStats> = {}
+
+      ;((gamePointsRes.data || []) as GamePointEvent[]).forEach(event => {
+        if (!nextStats[event.player_id]) {
+          nextStats[event.player_id] = {
+            gameEventsCount: 0,
+            averageGamePoints: 0,
+          }
+        }
+
+        nextStats[event.player_id].gameEventsCount += 1
+        nextStats[event.player_id].averageGamePoints += event.points
+      })
+
+      Object.keys(nextStats).forEach(playerId => {
+        const stats = nextStats[playerId]
+        stats.averageGamePoints = stats.gameEventsCount
+          ? Math.round(stats.averageGamePoints / stats.gameEventsCount)
+          : 0
+      })
+
+      setPlayerGameStats(nextStats)
+    }
 
     setLoading(false)
   }
@@ -170,6 +212,7 @@ export default function PublicHomePage() {
                 <p className="text-sm mad-muted">{index + 1}. място</p>
                 <h3 className="text-xl font-black">{player.name}</h3>
                 <p className="text-yellow-300 font-bold">{player.total_points || 0} точки</p>
+                <p className="text-xs mad-muted mt-1">Средно от игра: {playerGameStats[player.id]?.averageGamePoints || 0} т.</p>
               </div>
             ))}
 
@@ -233,6 +276,7 @@ export default function PublicHomePage() {
                       <div>
                         <p className="font-bold">{player.name}</p>
                         <p className="text-sm mad-muted">Общо точки</p>
+                        <p className="text-xs mad-muted">Средно от игра: {playerGameStats[player.id]?.averageGamePoints || 0} т.</p>
                       </div>
                     </div>
 
