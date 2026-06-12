@@ -204,3 +204,40 @@ body {
     transform: translateX(-50%);
   }
 }
+
+.leaderboard-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #06b6d4, #7c3aed);
+  color: white;
+  font-weight: 900;
+  font-size: 16px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+}
+
+.leaderboard-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.leaderboard-avatar-gold {
+  border-color: #fbbf24;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.45);
+}
+
+.leaderboard-avatar-silver {
+  border-color: #cbd5e1;
+  box-shadow: 0 0 20px rgba(203, 213, 225, 0.45);
+}
+
+.leaderboard-avatar-bronze {
+  border-color: #d97706;
+  box-shadow: 0 0 20px rgba(217, 119, 6, 0.45);
+}

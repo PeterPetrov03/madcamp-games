@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 type PublicPlayer = {
   id: string;
   name: string;
+  avatar_url: string | null;
   total_points: number;
   game_points: number;
 };
@@ -57,6 +58,17 @@ function feedLabel(event: FeedEvent) {
   return event.title;
 }
 
+function getInitials(name: string) {
+  return (
+    name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "?"
+  );
+}
+
 function pointsNeededForTop4(
   player: PublicPlayer,
   index: number,
@@ -99,7 +111,7 @@ export default function PublicHomePage() {
     const [leaderboardRes, gamesRes, roundsRes, feedRes] = await Promise.all([
       supabase
         .from("leaderboard")
-        .select("id,name,total_points,game_points")
+        .select("id,name,avatar_url,total_points,game_points")
         .order("total_points", { ascending: false }),
 
       supabase
@@ -247,7 +259,7 @@ export default function PublicHomePage() {
           {nextChallenger && fourthPlace && cutLineDifference !== null && (
             <div className="mad-card-solid p-4">
               <p className="text-slate-300">
-                <b>{nextChallenger.name}</b> е първи извън финала и му/и трябват
+                <b>{nextChallenger.name}</b> е първи/a извън финала и му/и трябват
                 още <b className="text-yellow-300">{cutLineDifference}</b>{" "}
                 точки, за да влезе в Топ 4.
               </p>
@@ -319,6 +331,29 @@ export default function PublicHomePage() {
                       <div className={`mad-rank-badge ${rankClass}`}>
                         {index + 1}
                       </div>
+
+                      <div
+                        className={`leaderboard-avatar ${
+                          index === 0
+                            ? "leaderboard-avatar-gold"
+                            : index === 1
+                              ? "leaderboard-avatar-silver"
+                              : index === 2
+                                ? "leaderboard-avatar-bronze"
+                                : ""
+                        }`}
+                      >
+                        {player.avatar_url ? (
+                          <img
+                            src={player.avatar_url}
+                            alt={player.name}
+                            className="leaderboard-avatar-image"
+                          />
+                        ) : (
+                          getInitials(player.name)
+                        )}
+                      </div>
+
                       <div>
                         <p className="font-bold">{player.name}</p>
                         <p className="text-sm mad-muted">Общо точки</p>
