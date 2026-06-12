@@ -328,7 +328,20 @@ export default function AdminPage() {
           note: `${place}. място`,
         };
       })
-      .filter(Boolean);
+      .filter(
+        (
+          row,
+        ): row is {
+          player_id: string;
+          game_id: string;
+          game_round_id: string;
+          round_number: number;
+          type: "game";
+          title: string;
+          points: number;
+          note: string;
+        } => row !== null,
+      );
 
     if (!rows.length) {
       setStatus("Не намерих участници по въведените имена/PIN-ове.");
