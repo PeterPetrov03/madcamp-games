@@ -1,161 +1,167 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type PublicPlayer = {
-  id: string
-  name: string
-  total_points: number
-  game_points: number
-}
+  id: string;
+  name: string;
+  total_points: number;
+  game_points: number;
+};
 
 type Game = {
-  id: string
-  title: string
-}
+  id: string;
+  title: string;
+};
 
 type Round = {
-  id: string
-  game_id: string
-  round_number: number
-}
+  id: string;
+  game_id: string;
+  round_number: number;
+};
 
 type FeedEvent = {
-  id: string
-  type: 'game' | 'achievement' | 'steps' | 'heart_rate' | 'bonus' | 'penalty'
-  title: string
-  points: number
-  round_number: number | null
-  created_at: string
-  players?: { name: string } | null
-  games?: { title: string } | null
+  id: string;
+  type: "game" | "achievement" | "steps" | "heart_rate" | "bonus" | "penalty";
+  title: string;
+  points: number;
+  round_number: number | null;
+  created_at: string;
+  players?: { name: string } | { name: string }[] | null;
+  games?: { title: string } | { title: string }[] | null;
+};
+
+function getPlayerName(event: FeedEvent) {
+  if (Array.isArray(event.players)) return event.players[0]?.name || "Участник";
+  return event.players?.name || "Участник";
 }
 
-type GamePointEvent = {
-  player_id: string
-  points: number
-}
-
-type PlayerGameStats = {
-  gameEventsCount: number
-  averageGamePoints: number
+function getGameTitle(event: FeedEvent) {
+  if (Array.isArray(event.games)) return event.games[0]?.title || "Игра";
+  return event.games?.title || "Игра";
 }
 
 function feedLabel(event: FeedEvent) {
-  if (event.type === 'game') {
-    return `${event.games?.title || 'Игра'}${event.round_number ? ` · Рунд ${event.round_number}` : ''}`
+  if (event.type === "game") {
+    return `${getGameTitle(event)}${event.round_number ? ` · Рунд ${event.round_number}` : ""}`;
   }
 
-  if (event.type === 'achievement') return `Achievement · ${event.title}`
-  if (event.type === 'steps') return `Крачки · ${event.title}`
-  if (event.type === 'heart_rate') return `Пулс · ${event.title}`
-  if (event.type === 'bonus') return `Бонус · ${event.title}`
-  if (event.type === 'penalty') return 'Промяна в точки'
+  if (event.type === "achievement") return `Achievement · ${event.title}`;
+  if (event.type === "steps") return `Крачки · ${event.title}`;
+  if (event.type === "heart_rate") return `Пулс · ${event.title}`;
+  if (event.type === "bonus") return `Бонус · ${event.title}`;
+  if (event.type === "penalty") return "Промяна в точки";
 
-  return event.title
+  return event.title;
+}
+
+function pointsNeededForTop4(
+  player: PublicPlayer,
+  index: number,
+  fourthPlace?: PublicPlayer,
+) {
+  if (index < 4) return 0;
+  if (!fourthPlace) return 0;
+  return Math.max(
+    (fourthPlace.total_points || 0) - (player.total_points || 0) + 1,
+    1,
+  );
 }
 
 export default function PublicHomePage() {
-  const [players, setPlayers] = useState<PublicPlayer[]>([])
-  const [games, setGames] = useState<Game[]>([])
-  const [rounds, setRounds] = useState<Round[]>([])
-  const [feed, setFeed] = useState<FeedEvent[]>([])
-  const [playerGameStats, setPlayerGameStats] = useState<Record<string, PlayerGameStats>>({})
-  const [loading, setLoading] = useState(true)
+  const [players, setPlayers] = useState<PublicPlayer[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const topPlayers = useMemo(() => players.slice(0, 8), [players])
-  const finalists = useMemo(() => players.slice(0, 4), [players])
-  const nextChallenger = players[4]
-  const fourthPlace = players[3]
-  const totalRounds = rounds.length
+  const topPlayers = useMemo(() => players.slice(0, 8), [players]);
+  const finalists = useMemo(() => players.slice(0, 4), [players]);
+  const nextChallenger = players[4];
+  const fourthPlace = players[3];
+  const totalRounds = rounds.length;
 
   const cutLineDifference =
     fourthPlace && nextChallenger
-      ? Math.max((fourthPlace.total_points || 0) - (nextChallenger.total_points || 0), 0)
-      : null
+      ? Math.max(
+          (fourthPlace.total_points || 0) -
+            (nextChallenger.total_points || 0) +
+            1,
+          1,
+        )
+      : null;
 
   async function loadPublicData() {
-    setLoading(true)
+    setLoading(true);
 
-    const [leaderboardRes, gamesRes, roundsRes, feedRes, gamePointsRes] = await Promise.all([
+    const [leaderboardRes, gamesRes, roundsRes, feedRes] = await Promise.all([
       supabase
-        .from('leaderboard')
-        .select('id,name,total_points,game_points')
-        .order('total_points', { ascending: false }),
-
-      supabase
-        .from('games')
-        .select('id,title')
-        .order('created_at', { ascending: true }),
+        .from("leaderboard")
+        .select("id,name,total_points,game_points")
+        .order("total_points", { ascending: false }),
 
       supabase
-        .from('game_rounds')
-        .select('id,game_id,round_number')
-        .order('round_number', { ascending: true }),
+        .from("games")
+        .select("id,title")
+        .order("created_at", { ascending: true }),
 
       supabase
-        .from('point_events')
-        .select('id,type,title,points,round_number,created_at,players(name),games(title)')
-        .neq('type', 'penalty')
-        .order('created_at', { ascending: false })
+        .from("game_rounds")
+        .select("id,game_id,round_number")
+        .order("round_number", { ascending: true }),
+
+      supabase
+        .from("point_events")
+        .select(
+          "id,type,title,points,round_number,created_at,players(name),games(title)",
+        )
+        .neq("type", "penalty")
+        .order("created_at", { ascending: false })
         .limit(15),
+    ]);
 
-      supabase
-        .from('point_events')
-        .select('player_id,points')
-        .eq('type', 'game'),
-    ])
+    if (!leaderboardRes.error)
+      setPlayers((leaderboardRes.data || []) as PublicPlayer[]);
+    if (!gamesRes.error) setGames((gamesRes.data || []) as Game[]);
+    if (!roundsRes.error) setRounds((roundsRes.data || []) as Round[]);
+    if (!feedRes.error) setFeed((feedRes.data || []) as FeedEvent[]);
 
-    if (!leaderboardRes.error) setPlayers((leaderboardRes.data || []) as PublicPlayer[])
-    if (!gamesRes.error) setGames((gamesRes.data || []) as Game[])
-    if (!roundsRes.error) setRounds((roundsRes.data || []) as Round[])
-    if (!feedRes.error) setFeed((feedRes.data || []) as FeedEvent[])
-
-    if (!gamePointsRes.error) {
-      const nextStats: Record<string, PlayerGameStats> = {}
-
-      ;((gamePointsRes.data || []) as GamePointEvent[]).forEach(event => {
-        if (!nextStats[event.player_id]) {
-          nextStats[event.player_id] = {
-            gameEventsCount: 0,
-            averageGamePoints: 0,
-          }
-        }
-
-        nextStats[event.player_id].gameEventsCount += 1
-        nextStats[event.player_id].averageGamePoints += event.points
-      })
-
-      Object.keys(nextStats).forEach(playerId => {
-        const stats = nextStats[playerId]
-        stats.averageGamePoints = stats.gameEventsCount
-          ? Math.round(stats.averageGamePoints / stats.gameEventsCount)
-          : 0
-      })
-
-      setPlayerGameStats(nextStats)
-    }
-
-    setLoading(false)
+    setLoading(false);
   }
 
   useEffect(() => {
-    loadPublicData()
+    loadPublicData();
 
     const channel = supabase
-      .channel('public-home-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, loadPublicData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, loadPublicData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_rounds' }, loadPublicData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_events' }, loadPublicData)
-      .subscribe()
+      .channel("public-home-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "players" },
+        loadPublicData,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "games" },
+        loadPublicData,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_rounds" },
+        loadPublicData,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "point_events" },
+        loadPublicData,
+      )
+      .subscribe();
 
     return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <main className="min-h-screen py-6 space-y-6">
@@ -165,13 +171,18 @@ export default function PublicHomePage() {
             <p className="mad-kicker">MAD CAMP Games</p>
             <h1 className="text-4xl font-black">Лагерен турнир</h1>
             <p className="mad-muted max-w-2xl">
-              Публична класация в реално време. Тук няма PIN кодове, лични бележки или лична история на участниците.
+              Публична класация в реално време. Тук няма PIN кодове, лични
+              бележки или лична история на участниците.
             </p>
           </div>
 
           <div className="flex gap-3">
-            <Link href="/profile" className="mad-btn-secondary">Моят профил</Link>
-            <Link href="/login" className="mad-btn-secondary">Admin</Link>
+            <Link href="/login" className="mad-btn-secondary">
+              Моят профил
+            </Link>
+            <Link href="/profile" className="mad-btn-secondary">
+              Admin
+            </Link>
           </div>
         </header>
 
@@ -193,17 +204,23 @@ export default function PublicHomePage() {
 
           <div className="mad-card p-4">
             <p className="mad-muted">Лидер</p>
-            <b className="text-3xl">{topPlayers[0]?.name || '—'}</b>
+            <b className="text-3xl">{topPlayers[0]?.name || "—"}</b>
           </div>
         </section>
 
         <section className="mad-card p-5 space-y-4 border-yellow-500/40">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-yellow-300 uppercase tracking-[0.25em] font-black">Final Zone</p>
-              <h2 className="text-2xl font-black">Топ 4 финалисти към момента</h2>
+              <p className="text-sm text-yellow-300 uppercase tracking-[0.25em] font-black">
+                Final Zone
+              </p>
+              <h2 className="text-2xl font-black">
+                Топ 4 финалисти към момента
+              </h2>
             </div>
-            {loading && <span className="text-sm mad-muted">Обновяване...</span>}
+            {loading && (
+              <span className="text-sm mad-muted">Обновяване...</span>
+            )}
           </div>
 
           <div className="grid md:grid-cols-4 gap-3">
@@ -211,21 +228,28 @@ export default function PublicHomePage() {
               <div key={player.id} className="mad-card-solid p-4">
                 <p className="text-sm mad-muted">{index + 1}. място</p>
                 <h3 className="text-xl font-black">{player.name}</h3>
-                <p className="text-yellow-300 font-bold">{player.total_points || 0} точки</p>
-                <p className="text-xs mad-muted mt-1">Средно от игра: {playerGameStats[player.id]?.averageGamePoints || 0} т.</p>
+                <p className="text-yellow-300 font-bold">
+                  {player.total_points || 0} точки
+                </p>
+                <p className="text-xs text-green-300 mt-1">
+                  В момента е във финала ✅
+                </p>
               </div>
             ))}
 
             {!finalists.length && (
-              <p className="mad-muted">Все още няма достатъчно точки за финалисти.</p>
+              <p className="mad-muted">
+                Все още няма достатъчно точки за финалисти.
+              </p>
             )}
           </div>
 
           {nextChallenger && fourthPlace && cutLineDifference !== null && (
             <div className="mad-card-solid p-4">
               <p className="text-slate-300">
-                <b>{nextChallenger.name}</b> е първи извън финала и е само на{' '}
-                <b className="text-yellow-300">{cutLineDifference}</b> точки от Топ 4.
+                <b>{nextChallenger.name}</b> е първи извън финала и му трябват
+                още <b className="text-yellow-300">{cutLineDifference}</b>{" "}
+                точки, за да влезе в Топ 4.
               </p>
             </div>
           )}
@@ -240,12 +264,21 @@ export default function PublicHomePage() {
 
             <div className="feed-ticker">
               <div className="feed-ticker-track">
-                {[...feed, ...feed].map((event, index) => (
-                  <div key={`${event.id}-${index}`} className="feed-ticker-item">
-                    <span className="font-black">{event.players?.name || 'Участник'}</span>
+                {feed.map((event, index) => (
+                  <div
+                    key={`${event.id}-${index}`}
+                    className="feed-ticker-item"
+                  >
+                    <span className="font-black">{getPlayerName(event)}</span>
                     <span className="text-slate-400">{feedLabel(event)}</span>
-                    <span className={event.points >= 0 ? 'text-green-300 font-black' : 'text-red-300 font-black'}>
-                      {event.points > 0 ? '+' : ''}
+                    <span
+                      className={
+                        event.points >= 0
+                          ? "text-green-300 font-black"
+                          : "text-red-300 font-black"
+                      }
+                    >
+                      {event.points > 0 ? "+" : ""}
                       {event.points}
                     </span>
                   </div>
@@ -267,22 +300,43 @@ export default function PublicHomePage() {
 
             <div className="space-y-2">
               {topPlayers.map((player, index) => {
-                const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : ''
+                const rankClass =
+                  index === 0
+                    ? "gold"
+                    : index === 1
+                      ? "silver"
+                      : index === 2
+                        ? "bronze"
+                        : "";
+                const needed = pointsNeededForTop4(player, index, fourthPlace);
 
                 return (
-                  <div key={player.id} className="flex items-center justify-between rounded-xl bg-slate-800/70 p-3">
+                  <div
+                    key={player.id}
+                    className="flex items-center justify-between rounded-xl bg-slate-800/70 p-3"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={`mad-rank-badge ${rankClass}`}>{index + 1}</div>
+                      <div className={`mad-rank-badge ${rankClass}`}>
+                        {index + 1}
+                      </div>
                       <div>
                         <p className="font-bold">{player.name}</p>
                         <p className="text-sm mad-muted">Общо точки</p>
-                        <p className="text-xs mad-muted">Средно от игра: {playerGameStats[player.id]?.averageGamePoints || 0} т.</p>
+                        {index < 4 ? (
+                          <p className="text-xs text-green-300">
+                            В момента е във финала ✅
+                          </p>
+                        ) : (
+                          <p className="text-xs text-yellow-300">
+                            Трябват още {needed} т. до Топ 4
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     <b className="text-2xl">{player.total_points || 0}</b>
                   </div>
-                )
+                );
               })}
 
               {!players.length && (
@@ -295,22 +349,28 @@ export default function PublicHomePage() {
             <h2 className="text-xl font-black">Игри</h2>
 
             <div className="space-y-2">
-              {games.map(game => {
-                const gameRounds = rounds.filter(round => round.game_id === game.id)
+              {games.map((game) => {
+                const gameRounds = rounds.filter(
+                  (round) => round.game_id === game.id,
+                );
 
                 return (
                   <div key={game.id} className="rounded-xl bg-slate-800/70 p-3">
                     <p className="font-bold">{game.title}</p>
-                    <p className="text-sm mad-muted">{gameRounds.length} рунда</p>
+                    <p className="text-sm mad-muted">
+                      {gameRounds.length} рунда
+                    </p>
                   </div>
-                )
+                );
               })}
 
-              {!games.length && <p className="mad-muted">Все още няма добавени игри.</p>}
+              {!games.length && (
+                <p className="mad-muted">Все още няма добавени игри.</p>
+              )}
             </div>
           </div>
         </section>
       </div>
     </main>
-  )
+  );
 }
