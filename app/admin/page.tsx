@@ -2,520 +2,906 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
+import { isLoggedIn, logout } from "../../lib/auth";
 
-type PlayerProfile = {
+type Player = {
   id: string;
   name: string;
   pin: string;
   avatar_url: string | null;
   total_points: number;
-  game_points: number;
-  achievement_points: number;
-  steps_points: number;
-  heart_rate_points: number;
-  bonus_points: number;
 };
 
-type PublicParticipant = {
+type Game = {
   id: string;
-  name: string;
-  avatar_url: string | null;
-  total_points: number;
+  title: string;
+};
+
+type GameRound = {
+  id: string;
+  game_id: string;
+  round_number: number;
+  place_1_points: number;
+  place_2_points: number;
+  place_3_points: number;
+  place_4_points: number;
+  place_5_points: number;
+  place_6_points: number;
+  place_7_points: number;
+  place_8_points: number;
 };
 
 type PointEvent = {
   id: string;
+  player_id: string;
+  game_id: string | null;
+  game_round_id: string | null;
+  round_number: number | null;
+  type: "game" | "achievement" | "steps" | "heart_rate" | "bonus" | "penalty";
   title: string;
   points: number;
-  type: string;
   note: string | null;
-  round_number: number | null;
   created_at: string;
-  games?: { title: string } | null;
+  players?: { name: string } | { name: string }[] | null;
+  games?: { title: string } | { title: string }[] | null;
 };
 
-function initials(name: string) {
+const emptyGameRoundPoints = {
+  place_1_points: 100,
+  place_2_points: 90,
+  place_3_points: 80,
+  place_4_points: 70,
+  place_5_points: 60,
+  place_6_points: 50,
+  place_7_points: 40,
+  place_8_points: 30,
+};
+
+function getPlayerName(event: PointEvent) {
+  if (Array.isArray(event.players))
+    return event.players[0]?.name || "Изтрит участник";
+  return event.players?.name || "Изтрит участник";
+}
+
+function getGameTitle(event: PointEvent) {
+  if (Array.isArray(event.games)) return event.games[0]?.title || null;
+  return event.games?.title || null;
+}
+
+function getRoundPoints(round: GameRound, place: number) {
+  const key = `place_${place}_points` as keyof Pick<
+    GameRound,
+    | "place_1_points"
+    | "place_2_points"
+    | "place_3_points"
+    | "place_4_points"
+    | "place_5_points"
+    | "place_6_points"
+    | "place_7_points"
+    | "place_8_points"
+  >;
+
+  return Number(round[key] || 0);
+}
+
+function findPlayerByNameOrPin(players: Player[], value: string) {
+  const cleanValue = value.trim().toLowerCase();
+  if (!cleanValue) return null;
+
   return (
-    name
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "?"
+    players.find((player) => player.pin.trim().toLowerCase() === cleanValue) ||
+    players.find((player) => player.name.trim().toLowerCase() === cleanValue) ||
+    null
   );
 }
 
-function eventLabel(event: PointEvent) {
-  if (event.type === "game") {
-    const gameTitle = event.games?.title || "Игра";
-    const round = event.round_number ? ` · Рунд ${event.round_number}` : "";
-    return `${gameTitle}${round}`;
-  }
+export default function AdminPage() {
+  const router = useRouter();
 
-  return event.title;
-}
-
-export default function PlayerProfilePage() {
-  const [pin, setPin] = useState("");
-  const [player, setPlayer] = useState<PlayerProfile | null>(null);
-  const [participants, setParticipants] = useState<PublicParticipant[]>([]);
-  const [events, setEvents] = useState<PointEvent[]>([]);
-  const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState("");
 
-  const sortedParticipants = useMemo(
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
+  const [rounds, setRounds] = useState<GameRound[]>([]);
+  const [events, setEvents] = useState<PointEvent[]>([]);
+
+  const [newPlayer, setNewPlayer] = useState({ name: "", pin: "" });
+  const [newGameTitle, setNewGameTitle] = useState("");
+  const [newRound, setNewRound] = useState({
+    game_id: "",
+    round_number: 1,
+    ...emptyGameRoundPoints,
+  });
+
+  const [rankingForm, setRankingForm] = useState({
+    game_round_id: "",
+    place_1: "",
+    place_2: "",
+    place_3: "",
+    place_4: "",
+    place_5: "",
+    place_6: "",
+    place_7: "",
+    place_8: "",
+  });
+
+  const [manualPoints, setManualPoints] = useState({
+    player_id: "",
+    type: "bonus",
+    title: "",
+    points: 10,
+    note: "",
+  });
+
+  const [stepsForm, setStepsForm] = useState({
+    player_id: "",
+    day_label: "Ден 1",
+    steps: 0,
+    points: 0,
+  });
+
+  const sortedPlayers = useMemo(
     () =>
-      [...participants].sort(
+      [...players].sort(
         (a, b) => (b.total_points || 0) - (a.total_points || 0),
       ),
-    [participants],
+    [players],
   );
 
-  const playerStats = useMemo(() => {
-    const gameEvents = events.filter((event) => event.type === "game");
-    const extraEvents = events.filter((event) => event.type !== "game");
-    const gamePoints = gameEvents.reduce((sum, event) => sum + event.points, 0);
-    const extraPoints = extraEvents.reduce(
-      (sum, event) => sum + event.points,
-      0,
-    );
-    const bestEvent = events.length
-      ? [...events].sort((a, b) => b.points - a.points)[0]
-      : null;
+  const selectedRound = useMemo(
+    () =>
+      rounds.find((round) => round.id === rankingForm.game_round_id) || null,
+    [rounds, rankingForm.game_round_id],
+  );
 
-    return {
-      playedRounds: gameEvents.length,
-      averageGamePoints: gameEvents.length
-        ? Math.round(gamePoints / gameEvents.length)
-        : 0,
-      bestEvent,
-      extraEventsCount: extraEvents.length,
-      extraPoints,
-    };
-  }, [events]);
+  const selectedRoundGame = useMemo(
+    () => games.find((game) => game.id === selectedRound?.game_id) || null,
+    [games, selectedRound],
+  );
 
-  const playerRank = useMemo(() => {
-    if (!player) return null;
-    const index = sortedParticipants.findIndex(
-      (participant) => participant.id === player.id,
-    );
-    return index >= 0 ? index + 1 : null;
-  }, [player, sortedParticipants]);
-
-  const playerAhead = useMemo(() => {
-    if (!playerRank || playerRank <= 1) return null;
-    return sortedParticipants[playerRank - 2] || null;
-  }, [playerRank, sortedParticipants]);
-
-  const playerBehind = useMemo(() => {
-    if (!playerRank) return null;
-    return sortedParticipants[playerRank] || null;
-  }, [playerRank, sortedParticipants]);
-
-  async function loadParticipants() {
-    const res = await supabase
-      .from("leaderboard")
-      .select("id,name,avatar_url,total_points")
-      .order("total_points", { ascending: false });
-
-    if (!res.error) setParticipants((res.data || []) as PublicParticipant[]);
-  }
-
-  async function loadProfileByPin(nextPin = pin) {
-    const cleanPin = nextPin.trim();
-    if (!cleanPin) return;
-
-    setError("");
-    setStatus("");
+  async function loadData() {
     setLoading(true);
-    setPlayer(null);
-    setEvents([]);
 
-    const profileRes = await supabase
-      .from("leaderboard")
-      .select(
-        "id,name,pin,avatar_url,total_points,game_points,achievement_points,steps_points,heart_rate_points,bonus_points",
-      )
-      .eq("pin", cleanPin)
-      .maybeSingle();
+    const [playersRes, gamesRes, roundsRes, eventsRes] = await Promise.all([
+      supabase
+        .from("leaderboard")
+        .select("id,name,pin,avatar_url,total_points")
+        .order("total_points", { ascending: false }),
+      supabase
+        .from("games")
+        .select("id,title")
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("game_rounds")
+        .select("*")
+        .order("round_number", { ascending: true }),
+      supabase
+        .from("point_events")
+        .select(
+          "id,player_id,game_id,game_round_id,round_number,type,title,points,note,created_at,players(name),games(title)",
+        )
+        .order("created_at", { ascending: false })
+        .limit(80),
+    ]);
 
-    if (profileRes.error || !profileRes.data) {
-      setError("Не намерих участник с този PIN код.");
-      setLoading(false);
-      return;
+    if (
+      playersRes.error ||
+      gamesRes.error ||
+      roundsRes.error ||
+      eventsRes.error
+    ) {
+      setStatus(
+        playersRes.error?.message ||
+          gamesRes.error?.message ||
+          roundsRes.error?.message ||
+          eventsRes.error?.message ||
+          "Има проблем с четенето от Supabase.",
+      );
+    } else {
+      setStatus("");
+      setPlayers((playersRes.data || []) as Player[]);
+      setGames((gamesRes.data || []) as Game[]);
+      setRounds((roundsRes.data || []) as GameRound[]);
+      setEvents((eventsRes.data || []) as PointEvent[]);
     }
-
-    setPlayer(profileRes.data as PlayerProfile);
-
-    const eventsRes = await supabase
-      .from("point_events")
-      .select("id,title,points,type,note,round_number,created_at,games(title)")
-      .eq("player_id", profileRes.data.id)
-      .order("created_at", { ascending: false });
-
-    if (!eventsRes.error) setEvents((eventsRes.data || []) as PointEvent[]);
 
     setLoading(false);
   }
 
-  async function handleLogin(event: React.FormEvent) {
-    event.preventDefault();
-    await loadProfileByPin(pin);
+  async function addPlayer() {
+    if (!newPlayer.name.trim() || !newPlayer.pin.trim()) {
+      setStatus("Име и PIN са задължителни.");
+      return;
+    }
+
+    const { error } = await supabase.from("players").insert({
+      name: newPlayer.name.trim(),
+      pin: newPlayer.pin.trim(),
+    });
+
+    if (error) {
+      setStatus(error.message);
+      return;
+    }
+
+    setNewPlayer({ name: "", pin: "" });
+    setStatus("Участникът е добавен.");
+    await loadData();
   }
 
-  async function uploadAvatar(file: File) {
-    if (!player) return;
+  async function deletePlayer(id: string) {
+    if (!confirm("Да изтрия ли участника и всичките му точки?")) return;
 
-    if (!file.type.startsWith("image/")) {
-      setStatus("Моля избери снимка, не друг тип файл.");
+    const { error } = await supabase.from("players").delete().eq("id", id);
+    if (error) setStatus(error.message);
+    else await loadData();
+  }
+
+  async function addGame() {
+    if (!newGameTitle.trim()) {
+      setStatus("Въведи име на играта.");
       return;
     }
 
-    setUploading(true);
-    setStatus("");
+    const { error } = await supabase
+      .from("games")
+      .insert({ title: newGameTitle.trim() });
 
-    const extension = file.name.split(".").pop() || "jpg";
-    const path = `${player.id}/avatar-${Date.now()}.${extension}`;
-
-    const uploadRes = await supabase.storage
-      .from("avatars")
-      .upload(path, file, { upsert: true });
-
-    if (uploadRes.error) {
-      setStatus(uploadRes.error.message);
-      setUploading(false);
+    if (error) {
+      setStatus(error.message);
       return;
     }
 
-    const publicUrl = supabase.storage.from("avatars").getPublicUrl(path)
-      .data.publicUrl;
+    setNewGameTitle("");
+    setStatus("Играта е добавена.");
+    await loadData();
+  }
 
-    const updateRes = await supabase
-      .from("players")
-      .update({ avatar_url: publicUrl })
-      .eq("id", player.id);
-
-    if (updateRes.error) {
-      setStatus(updateRes.error.message);
-      setUploading(false);
+  async function addRound() {
+    if (!newRound.game_id) {
+      setStatus("Избери игра за рунда.");
       return;
     }
 
-    setPlayer({ ...player, avatar_url: publicUrl });
-    setStatus("Профилната снимка е качена.");
-    setUploading(false);
-    await loadParticipants();
+    const { error } = await supabase.from("game_rounds").insert({
+      game_id: newRound.game_id,
+      round_number: Number(newRound.round_number),
+      place_1_points: Number(newRound.place_1_points),
+      place_2_points: Number(newRound.place_2_points),
+      place_3_points: Number(newRound.place_3_points),
+      place_4_points: Number(newRound.place_4_points),
+      place_5_points: Number(newRound.place_5_points),
+      place_6_points: Number(newRound.place_6_points),
+      place_7_points: Number(newRound.place_7_points),
+      place_8_points: Number(newRound.place_8_points),
+    });
+
+    if (error) {
+      setStatus(error.message);
+      return;
+    }
+
+    setNewRound({
+      ...newRound,
+      round_number: Number(newRound.round_number) + 1,
+    });
+    setStatus("Рундът е добавен.");
+    await loadData();
+  }
+
+  async function saveRoundRanking() {
+    if (!selectedRound) {
+      setStatus("Избери рунд.");
+      return;
+    }
+
+    const placements = [
+      rankingForm.place_1,
+      rankingForm.place_2,
+      rankingForm.place_3,
+      rankingForm.place_4,
+      rankingForm.place_5,
+      rankingForm.place_6,
+      rankingForm.place_7,
+      rankingForm.place_8,
+    ];
+
+    const rows = placements
+      .map((value, index) => {
+        const player = findPlayerByNameOrPin(players, value);
+        if (!player) return null;
+
+        const place = index + 1;
+        const points = getRoundPoints(selectedRound, place);
+
+        return {
+          player_id: player.id,
+          game_id: selectedRound.game_id,
+          game_round_id: selectedRound.id,
+          round_number: selectedRound.round_number,
+          type: "game" as const,
+          title: `${selectedRoundGame?.title || "Игра"} - Рунд ${selectedRound.round_number}`,
+          points,
+          note: `${place}. място`,
+        };
+      })
+      .filter(Boolean);
+
+    if (!rows.length) {
+      setStatus("Не намерих участници по въведените имена/PIN-ове.");
+      return;
+    }
+
+    const { error } = await supabase.from("point_events").insert(rows);
+
+    if (error) {
+      setStatus(error.message);
+      return;
+    }
+
+    setRankingForm({
+      game_round_id: rankingForm.game_round_id,
+      place_1: "",
+      place_2: "",
+      place_3: "",
+      place_4: "",
+      place_5: "",
+      place_6: "",
+      place_7: "",
+      place_8: "",
+    });
+    setStatus("Резултатът от рунда е записан.");
+    await loadData();
+  }
+
+  async function addManualPoints() {
+    if (!manualPoints.player_id || !manualPoints.title.trim()) {
+      setStatus("Избери участник и въведи заглавие.");
+      return;
+    }
+
+    const { error } = await supabase.from("point_events").insert({
+      player_id: manualPoints.player_id,
+      game_id: null,
+      game_round_id: null,
+      round_number: null,
+      type: manualPoints.type,
+      title: manualPoints.title.trim(),
+      points: Number(manualPoints.points),
+      note: manualPoints.note.trim() || null,
+    });
+
+    if (error) {
+      setStatus(error.message);
+      return;
+    }
+
+    setManualPoints({ ...manualPoints, title: "", points: 10, note: "" });
+    setStatus("Ръчните точки са добавени.");
+    await loadData();
+  }
+
+  async function addSteps() {
+    if (!stepsForm.player_id) {
+      setStatus("Избери участник за крачките.");
+      return;
+    }
+
+    if (!stepsForm.steps || stepsForm.steps <= 0) {
+      setStatus("Въведи брой крачки.");
+      return;
+    }
+
+    const { error } = await supabase.from("point_events").insert({
+      player_id: stepsForm.player_id,
+      game_id: null,
+      game_round_id: null,
+      round_number: null,
+      type: "steps",
+      title: `${stepsForm.day_label} · ${stepsForm.steps} крачки`,
+      points: Number(stepsForm.points),
+      note: `Ръчно въведени крачки: ${stepsForm.steps}`,
+    });
+
+    if (error) {
+      setStatus(error.message);
+      return;
+    }
+
+    setStepsForm({ ...stepsForm, steps: 0, points: 0 });
+    setStatus("Крачките са записани като точки.");
+    await loadData();
+  }
+
+  async function deleteEvent(id: string) {
+    if (!confirm("Да изтрия ли този запис с точки?")) return;
+
+    const { error } = await supabase.from("point_events").delete().eq("id", id);
+    if (error) setStatus(error.message);
+    else await loadData();
   }
 
   useEffect(() => {
-    loadParticipants();
+    if (!isLoggedIn()) {
+      router.replace("/login");
+      return;
+    }
+
+    setCheckingAuth(false);
+    loadData();
 
     const channel = supabase
-      .channel("profile-page-live")
+      .channel("admin-live-data")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "players" },
-        () => {
-          loadParticipants();
-          if (pin.trim()) loadProfileByPin(pin);
-        },
+        loadData,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "games" },
+        loadData,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_rounds" },
+        loadData,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "point_events" },
-        () => {
-          loadParticipants();
-          if (pin.trim()) loadProfileByPin(pin);
-        },
+        loadData,
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [pin]);
+  }, [router]);
+
+  if (checkingAuth) {
+    return (
+      <main className="min-h-screen py-10">
+        <div className="mad-shell">
+          <p className="mad-muted">Проверка на достъпа...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen py-6 md:py-10">
-      <div className="mad-shell max-w-6xl space-y-6">
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <main className="min-h-screen py-6 space-y-6">
+      <div className="mad-shell space-y-6">
+        <header className="py-6 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
           <div>
             <p className="mad-kicker">MAD CAMP Games</p>
-            <h1 className="text-3xl md:text-5xl font-black mt-2">
-              Моят профил
-            </h1>
-            <p className="mad-muted mt-2">
-              Тук виждаш своите точки, история и участниците в турнира.
+            <h1 className="text-4xl font-black">Админ панел</h1>
+            <p className="mad-muted">
+              Управляваш участници, игри, рундове, точки и крачки.
             </p>
           </div>
-          <Link href="/" className="mad-btn-secondary">
-            Класация
-          </Link>
+
+          <div className="flex flex-wrap gap-3">
+            <Link href="/" className="mad-btn-secondary">
+              Публична страница
+            </Link>
+            <Link href="/profile" className="mad-btn-secondary">
+              Профил
+            </Link>
+            <button onClick={loadData} className="mad-btn-secondary">
+              Refresh
+            </button>
+            <button onClick={logout} className="mad-btn-secondary">
+              Изход
+            </button>
+          </div>
         </header>
 
-        {!player && (
-          <section className="mad-card p-5 md:p-6 space-y-4 max-w-3xl">
-            <p className="mad-muted">
-              Въведи личния си PIN код, за да отвориш профила си.
-            </p>
-            <form
-              onSubmit={handleLogin}
-              className="grid md:grid-cols-[1fr_auto] gap-3"
-            >
-              <input
-                className="mad-input"
-                placeholder="Твоят PIN код"
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-              />
-              <button className="mad-btn" type="submit">
-                Отвори
-              </button>
-            </form>
-            {loading && <p className="mad-muted">Зареждане...</p>}
-            {error && <p className="text-red-300">{error}</p>}
-          </section>
+        {status && (
+          <div className="mad-card p-4 border-indigo-500/50">{status}</div>
         )}
 
-        {player && (
-          <section className="grid lg:grid-cols-[0.95fr_1.05fr] gap-6">
-            <div className="mad-card p-5 md:p-6 space-y-5">
-              <div className="flex items-center gap-4">
-                {player.avatar_url ? (
-                  <img
-                    src={player.avatar_url}
-                    alt={player.name}
-                    className="mad-avatar-xl"
-                  />
-                ) : (
-                  <div className="mad-avatar-xl mad-avatar-fallback">
-                    {initials(player.name)}
-                  </div>
-                )}
+        <section className="grid md:grid-cols-4 gap-4">
+          <div className="mad-card p-4">
+            <p className="mad-muted">Участници</p>
+            <b className="text-3xl">{players.length}</b>
+          </div>
+          <div className="mad-card p-4">
+            <p className="mad-muted">Игри</p>
+            <b className="text-3xl">{games.length}</b>
+          </div>
+          <div className="mad-card p-4">
+            <p className="mad-muted">Рундове</p>
+            <b className="text-3xl">{rounds.length}</b>
+          </div>
+          <div className="mad-card p-4">
+            <p className="mad-muted">Записи с точки</p>
+            <b className="text-3xl">{events.length}</b>
+          </div>
+        </section>
 
-                <div className="min-w-0">
-                  <p className="mad-muted">Участник</p>
-                  <h2 className="text-3xl font-black truncate">
-                    {player.name}
-                  </h2>
-                  <p className="mad-muted mt-1">
-                    Твоят PIN:{" "}
-                    <span className="text-white font-bold">{player.pin}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="mad-card-solid p-4 flex items-center justify-between">
-                <div>
-                  <p className="mad-muted">Общо точки</p>
-                  <p className="text-sm mad-muted">
-                    Всичко, което си събрал досега
-                  </p>
-                </div>
-                <b className="text-5xl">{player.total_points}</b>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Място</p>
-                  <b>{playerRank ? `#${playerRank}` : "—"}</b>
-                </div>
-
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Средно от игра</p>
-                  <b>{playerStats.averageGamePoints} т.</b>
-                </div>
-
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Изиграни рундове</p>
-                  <b>{playerStats.playedRounds}</b>
-                </div>
-
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Най-силен резултат</p>
-                  <b>
-                    {playerStats.bestEvent
-                      ? `${playerStats.bestEvent.points} т.`
-                      : "—"}
-                  </b>
-                </div>
-              </div>
-
-              {(playerAhead || playerBehind) && (
-                <div className="mad-card-solid p-4 space-y-1">
-                  {playerAhead && (
-                    <p className="text-sm mad-muted">
-                      До <b className="text-white">{playerAhead.name}</b> пред
-                      теб:{" "}
-                      <b className="text-yellow-300">
-                        {Math.max(
-                          (playerAhead.total_points || 0) - player.total_points,
-                          0,
-                        )}
-                      </b>{" "}
-                      точки.
-                    </p>
-                  )}
-
-                  {playerBehind && (
-                    <p className="text-sm mad-muted">
-                      Пред <b className="text-white">{playerBehind.name}</b> зад
-                      теб:{" "}
-                      <b className="text-green-300">
-                        {Math.max(
-                          player.total_points -
-                            (playerBehind.total_points || 0),
-                          0,
-                        )}
-                      </b>{" "}
-                      точки.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <label className="mad-card-solid p-4 block cursor-pointer hover:bg-slate-800/80 transition">
-                <p className="font-bold">Качи профилна снимка</p>
-                <p className="text-sm mad-muted mt-1">
-                  Избери снимка от телефона си.
-                </p>
-                <input
-                  className="hidden"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadAvatar(file);
-                  }}
-                />
-              </label>
-
-              {uploading && <p className="mad-muted">Качване...</p>}
-              {status && <p className="text-indigo-200">{status}</p>}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Игри</p>
-                  <b>{player.game_points}</b>
-                </div>
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Achievements</p>
-                  <b>{player.achievement_points}</b>
-                </div>
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Крачки</p>
-                  <b>{player.steps_points}</b>
-                </div>
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Пулс</p>
-                  <b>{player.heart_rate_points}</b>
-                </div>
-                <div className="mad-card-solid p-3 col-span-2">
-                  <p className="mad-muted text-sm">Бонус / наказание</p>
-                  <b>{player.bonus_points}</b>
-                </div>
-              </div>
+        <section className="grid lg:grid-cols-2 gap-6">
+          <div className="mad-card p-5 space-y-4">
+            <h2 className="text-xl font-black">Участници</h2>
+            <div className="grid md:grid-cols-[1fr_140px_auto] gap-3">
+              <input
+                className="mad-input"
+                placeholder="Име"
+                value={newPlayer.name}
+                onChange={(event) =>
+                  setNewPlayer({ ...newPlayer, name: event.target.value })
+                }
+              />
+              <input
+                className="mad-input"
+                placeholder="PIN"
+                value={newPlayer.pin}
+                onChange={(event) =>
+                  setNewPlayer({ ...newPlayer, pin: event.target.value })
+                }
+              />
+              <button onClick={addPlayer} className="mad-btn">
+                Добави
+              </button>
             </div>
 
-            <div className="mad-card p-5 md:p-6 space-y-3">
-              <h2 className="text-2xl font-black">Мойте точки</h2>
-              <p className="mad-muted">Историята показва само твоите точки.</p>
-
-              <div className="grid sm:grid-cols-3 gap-3">
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Точки от игри</p>
-                  <b>{player.game_points}</b>
-                </div>
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Допълнителни събития</p>
-                  <b>{playerStats.extraEventsCount}</b>
-                </div>
-                <div className="mad-card-solid p-3">
-                  <p className="mad-muted text-sm">Допълнителни точки</p>
-                  <b>{playerStats.extraPoints}</b>
-                </div>
-              </div>
-
-              {events.map((event) => (
+            <div className="space-y-2">
+              {sortedPlayers.map((player) => (
                 <div
-                  key={event.id}
-                  className="mad-card-solid p-4 flex items-start justify-between gap-4"
+                  key={player.id}
+                  className="mad-card-solid p-3 flex items-center justify-between gap-3"
                 >
                   <div>
-                    <p className="font-bold">{eventLabel(event)}</p>
+                    <p className="font-bold">{player.name}</p>
                     <p className="text-sm mad-muted">
-                      {event.type === "game"
-                        ? "Точки от игра"
-                        : "Допълнителни точки"}
+                      PIN: {player.pin} · {player.total_points || 0} т.
                     </p>
                   </div>
+                  <button
+                    onClick={() => deletePlayer(player.id)}
+                    className="mad-btn-secondary"
+                  >
+                    Изтрий
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mad-card p-5 space-y-4">
+            <h2 className="text-xl font-black">Класация</h2>
+            <div className="space-y-2">
+              {sortedPlayers.map((player, index) => (
+                <div
+                  key={player.id}
+                  className="mad-card-solid p-3 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="font-bold">
+                      {index + 1}. {player.name}
+                    </p>
+                    <p className="text-sm mad-muted">PIN: {player.pin}</p>
+                  </div>
+                  <b className="text-2xl">{player.total_points || 0}</b>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid lg:grid-cols-2 gap-6">
+          <div className="mad-card p-5 space-y-4">
+            <h2 className="text-xl font-black">Добави игра</h2>
+            <div className="grid md:grid-cols-[1fr_auto] gap-3">
+              <input
+                className="mad-input"
+                placeholder="Име на играта"
+                value={newGameTitle}
+                onChange={(event) => setNewGameTitle(event.target.value)}
+              />
+              <button onClick={addGame} className="mad-btn">
+                Добави игра
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {games.map((game) => (
+                <div key={game.id} className="mad-card-solid p-3">
+                  <p className="font-bold">{game.title}</p>
+                  <p className="text-sm mad-muted">
+                    {rounds.filter((round) => round.game_id === game.id).length}{" "}
+                    рунда
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mad-card p-5 space-y-4">
+            <h2 className="text-xl font-black">Добави рунд</h2>
+            <div className="grid md:grid-cols-2 gap-3">
+              <select
+                className="mad-input"
+                value={newRound.game_id}
+                onChange={(event) =>
+                  setNewRound({ ...newRound, game_id: event.target.value })
+                }
+              >
+                <option value="">Избери игра</option>
+                {games.map((game) => (
+                  <option key={game.id} value={game.id}>
+                    {game.title}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="mad-input"
+                type="number"
+                min={1}
+                placeholder="Рунд номер"
+                value={newRound.round_number}
+                onChange={(event) =>
+                  setNewRound({
+                    ...newRound,
+                    round_number: Number(event.target.value),
+                  })
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((place) => {
+                const key =
+                  `place_${place}_points` as keyof typeof emptyGameRoundPoints;
+                return (
+                  <label key={place} className="space-y-1">
+                    <span className="text-xs mad-muted">{place}. място</span>
+                    <input
+                      className="mad-input"
+                      type="number"
+                      value={newRound[key]}
+                      onChange={(event) =>
+                        setNewRound({
+                          ...newRound,
+                          [key]: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                );
+              })}
+            </div>
+            <button onClick={addRound} className="mad-btn">
+              Добави рунд
+            </button>
+          </div>
+        </section>
+
+        <section className="mad-card p-5 space-y-4">
+          <h2 className="text-xl font-black">Запиши резултат от рунд</h2>
+          <p className="mad-muted">
+            Можеш да въвеждаш име или PIN за всяко място.
+          </p>
+
+          <select
+            className="mad-input"
+            value={rankingForm.game_round_id}
+            onChange={(event) =>
+              setRankingForm({
+                ...rankingForm,
+                game_round_id: event.target.value,
+              })
+            }
+          >
+            <option value="">Избери рунд</option>
+            {rounds.map((round) => {
+              const game = games.find((item) => item.id === round.game_id);
+              return (
+                <option key={round.id} value={round.id}>
+                  {game?.title || "Игра"} · Рунд {round.round_number}
+                </option>
+              );
+            })}
+          </select>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((place) => {
+              const key = `place_${place}` as keyof typeof rankingForm;
+              return (
+                <input
+                  key={place}
+                  className="mad-input"
+                  placeholder={`${place}. място`}
+                  value={rankingForm[key]}
+                  onChange={(event) =>
+                    setRankingForm({
+                      ...rankingForm,
+                      [key]: event.target.value,
+                    })
+                  }
+                />
+              );
+            })}
+          </div>
+
+          <button onClick={saveRoundRanking} className="mad-btn">
+            Запиши резултат
+          </button>
+        </section>
+
+        <section className="grid lg:grid-cols-2 gap-6">
+          <div className="mad-card p-5 space-y-4 border-cyan-500/30">
+            <h2 className="text-xl font-black">Крачки за деня</h2>
+            <p className="mad-muted">
+              Ръчно въвеждане, ако няма автоматична връзка с телефонно
+              приложение.
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <select
+                className="mad-input"
+                value={stepsForm.player_id}
+                onChange={(event) =>
+                  setStepsForm({ ...stepsForm, player_id: event.target.value })
+                }
+              >
+                <option value="">Избери участник</option>
+                {players.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name} · PIN {player.pin}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="mad-input"
+                placeholder="Ден / етикет"
+                value={stepsForm.day_label}
+                onChange={(event) =>
+                  setStepsForm({ ...stepsForm, day_label: event.target.value })
+                }
+              />
+              <input
+                className="mad-input"
+                type="number"
+                min={0}
+                placeholder="Колко крачки е направил"
+                value={stepsForm.steps}
+                onChange={(event) =>
+                  setStepsForm({
+                    ...stepsForm,
+                    steps: Number(event.target.value),
+                  })
+                }
+              />
+              <input
+                className="mad-input"
+                type="number"
+                placeholder="Колко точки получава"
+                value={stepsForm.points}
+                onChange={(event) =>
+                  setStepsForm({
+                    ...stepsForm,
+                    points: Number(event.target.value),
+                  })
+                }
+              />
+            </div>
+
+            <button onClick={addSteps} className="mad-btn">
+              Запиши крачки
+            </button>
+          </div>
+
+          <div className="mad-card p-5 space-y-4">
+            <h2 className="text-xl font-black">Ръчни точки</h2>
+            <div className="grid md:grid-cols-2 gap-3">
+              <select
+                className="mad-input"
+                value={manualPoints.player_id}
+                onChange={(event) =>
+                  setManualPoints({
+                    ...manualPoints,
+                    player_id: event.target.value,
+                  })
+                }
+              >
+                <option value="">Избери участник</option>
+                {players.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name} · PIN {player.pin}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="mad-input"
+                value={manualPoints.type}
+                onChange={(event) =>
+                  setManualPoints({ ...manualPoints, type: event.target.value })
+                }
+              >
+                <option value="bonus">Бонус</option>
+                <option value="achievement">Achievement</option>
+                <option value="heart_rate">Пулс</option>
+                <option value="penalty">Наказание</option>
+              </select>
+              <input
+                className="mad-input"
+                placeholder="Заглавие"
+                value={manualPoints.title}
+                onChange={(event) =>
+                  setManualPoints({
+                    ...manualPoints,
+                    title: event.target.value,
+                  })
+                }
+              />
+              <input
+                className="mad-input"
+                type="number"
+                placeholder="Точки"
+                value={manualPoints.points}
+                onChange={(event) =>
+                  setManualPoints({
+                    ...manualPoints,
+                    points: Number(event.target.value),
+                  })
+                }
+              />
+              <input
+                className="mad-input md:col-span-2"
+                placeholder="Бележка"
+                value={manualPoints.note}
+                onChange={(event) =>
+                  setManualPoints({ ...manualPoints, note: event.target.value })
+                }
+              />
+            </div>
+            <button onClick={addManualPoints} className="mad-btn">
+              Добави точки
+            </button>
+          </div>
+        </section>
+
+        <section className="mad-card p-5 space-y-4">
+          <h2 className="text-xl font-black">Последни записи</h2>
+          <div className="space-y-2">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                className="mad-card-solid p-3 flex items-center justify-between gap-3"
+              >
+                <div>
+                  <p className="font-bold">{event.title}</p>
+                  <p className="text-sm mad-muted">
+                    {getPlayerName(event)}
+                    {getGameTitle(event) ? ` · ${getGameTitle(event)}` : ""}
+                    {event.note ? ` · ${event.note}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
                   <b
                     className={
                       event.points >= 0
-                        ? "text-green-300 text-2xl"
-                        : "text-red-300 text-2xl"
+                        ? "text-green-300 text-xl"
+                        : "text-red-300 text-xl"
                     }
                   >
                     {event.points > 0 ? "+" : ""}
                     {event.points}
                   </b>
-                </div>
-              ))}
-
-              {!events.length && (
-                <p className="mad-muted">Все още нямаш записани точки.</p>
-              )}
-            </div>
-          </section>
-        )}
-
-        <section className="mad-card p-5 md:p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-black">Участници</h2>
-              <p className="mad-muted">
-                Тук се вижда кой участва в турнира. PIN-овете на другите не се
-                показват.
-              </p>
-            </div>
-            <span className="mad-pill">{participants.length} човека</span>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sortedParticipants.map((participant, index) => (
-              <div
-                key={participant.id}
-                className="mad-card-solid p-4 flex items-center gap-3"
-              >
-                {participant.avatar_url ? (
-                  <img
-                    src={participant.avatar_url}
-                    alt={participant.name}
-                    className="mad-avatar"
-                  />
-                ) : (
-                  <div className="mad-avatar mad-avatar-fallback">
-                    {initials(participant.name)}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="font-black truncate">
-                    {index + 1}. {participant.name}
-                  </p>
-                  <p className="text-sm mad-muted">
-                    {participant.total_points || 0} точки
-                  </p>
+                  <button
+                    onClick={() => deleteEvent(event.id)}
+                    className="mad-btn-secondary"
+                  >
+                    Изтрий
+                  </button>
                 </div>
               </div>
             ))}
-
-            {!participants.length && (
-              <p className="mad-muted">Все още няма добавени участници.</p>
-            )}
           </div>
         </section>
       </div>

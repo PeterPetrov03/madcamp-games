@@ -177,10 +177,10 @@ export default function PublicHomePage() {
           </div>
 
           <div className="flex gap-3">
-            <Link href="/login" className="mad-btn-secondary">
+            <Link href="/profile" className="mad-btn-secondary">
               Моят профил
             </Link>
-            <Link href="/profile" className="mad-btn-secondary">
+            <Link href="/login" className="mad-btn-secondary">
               Admin
             </Link>
           </div>
