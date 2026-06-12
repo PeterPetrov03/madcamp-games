@@ -247,7 +247,7 @@ export default function PublicHomePage() {
           {nextChallenger && fourthPlace && cutLineDifference !== null && (
             <div className="mad-card-solid p-4">
               <p className="text-slate-300">
-                <b>{nextChallenger.name}</b> е първи извън финала и му трябват
+                <b>{nextChallenger.name}</b> е първи извън финала и му/и трябват
                 още <b className="text-yellow-300">{cutLineDifference}</b>{" "}
                 точки, за да влезе в Топ 4.
               </p>

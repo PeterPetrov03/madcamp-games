@@ -139,9 +139,8 @@ export default function AdminPage() {
 
   const [stepsForm, setStepsForm] = useState({
     player_id: "",
-    day_label: "Ден 1",
-    steps: 0,
-    points: 0,
+    steps: "",
+    points: "",
   });
 
   const sortedPlayers = useMemo(
@@ -391,7 +390,10 @@ export default function AdminPage() {
       return;
     }
 
-    if (!stepsForm.steps || stepsForm.steps <= 0) {
+    const steps = Number(stepsForm.steps);
+    const points = Number(stepsForm.points);
+
+    if (!steps || steps <= 0) {
       setStatus("Въведи брой крачки.");
       return;
     }
@@ -402,9 +404,9 @@ export default function AdminPage() {
       game_round_id: null,
       round_number: null,
       type: "steps",
-      title: `${stepsForm.day_label} · ${stepsForm.steps} крачки`,
-      points: Number(stepsForm.points),
-      note: `Ръчно въведени крачки: ${stepsForm.steps}`,
+      title: `${steps} крачки`,
+      points,
+      note: `Ръчно въведени крачки: ${steps}`,
     });
 
     if (error) {
@@ -412,7 +414,12 @@ export default function AdminPage() {
       return;
     }
 
-    setStepsForm({ ...stepsForm, steps: 0, points: 0 });
+    setStepsForm({
+      ...stepsForm,
+      steps: "",
+      points: "",
+    });
+
     setStatus("Крачките са записани като точки.");
     await loadData();
   }
@@ -715,7 +722,7 @@ export default function AdminPage() {
                 <input
                   key={place}
                   className="mad-input"
-                  placeholder={`${place}. място`}
+                  placeholder={`${place}`}
                   value={rankingForm[key]}
                   onChange={(event) =>
                     setRankingForm({
@@ -752,18 +759,10 @@ export default function AdminPage() {
                 <option value="">Избери участник</option>
                 {players.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.name} · PIN {player.pin}
+                    {player.name}
                   </option>
                 ))}
               </select>
-              <input
-                className="mad-input"
-                placeholder="Ден / етикет"
-                value={stepsForm.day_label}
-                onChange={(event) =>
-                  setStepsForm({ ...stepsForm, day_label: event.target.value })
-                }
-              />
               <input
                 className="mad-input"
                 type="number"
@@ -773,7 +772,7 @@ export default function AdminPage() {
                 onChange={(event) =>
                   setStepsForm({
                     ...stepsForm,
-                    steps: Number(event.target.value),
+                    steps: event.target.value,
                   })
                 }
               />
@@ -785,7 +784,7 @@ export default function AdminPage() {
                 onChange={(event) =>
                   setStepsForm({
                     ...stepsForm,
-                    points: Number(event.target.value),
+                    points: event.target.value,
                   })
                 }
               />
@@ -812,7 +811,7 @@ export default function AdminPage() {
                 <option value="">Избери участник</option>
                 {players.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.name} · PIN {player.pin}
+                    {player.name}
                   </option>
                 ))}
               </select>
